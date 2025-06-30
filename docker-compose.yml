@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: donghyeokpark
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  airflow:
+    image: apache/airflow:2.7.2-python3.10
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://donghyeokpark:airflow@postgres:5432/postgres
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=True
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_super_secret_key_1234
+      - CRAWLER_PATH=${PWD}/crawler
+      - DATA_PATH=${PWD}/data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dags:/opt/airflow/dags
+      - ./crawler:/opt/airflow/crawler
+      - ./data:/opt/airflow/data
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+        airflow db upgrade &&
+        airflow users create --username admin --password admin --firstname Dong --lastname Hyeok --role Admin --email admin@example.com &&
+        exec airflow webserver
+      "
+
+  scheduler:
+    image: apache/airflow:2.7.2-python3.10
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://donghyeokpark:airflow@postgres:5432/postgres
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_super_secret_key_1234
+      - CRAWLER_PATH=${PWD}/crawler
+      - DATA_PATH=${PWD}/data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dags:/opt/airflow/dags
+      - ./crawler:/opt/airflow/crawler
+      - ./data:/opt/airflow/data
+    command: >
+      bash -c "
+        airflow db upgrade &&
+        exec airflow scheduler
+      "
+
+  crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler
+    image: airflow-crawler:latest
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: airflow_net
